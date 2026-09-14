@@ -1,15 +1,18 @@
 {
-    "name": "mi-pagina-personal",
-    "version": "1.0.0",
-    "description": "Pagina personal",
-    "main": "server.js",
-    "scripts": {
-        "start": "node server.js"
-    },
-    "dependencies": {
-        "express": "^5.1.0"
-    },
-    "devDependencies": {
-        "vite": "^8.3.0"
-    }
+  "name": "mi-pagina-personal",
+  "version": "1.0.0",
+  "description": "Pagina personal",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.0"
+  }
 }
