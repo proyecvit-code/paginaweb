@@ -2,16 +2,13 @@
   "name": "mi-pagina-personal",
   "version": "1.0.0",
   "description": "Pagina personal",
-  "main": "server.js",
+  "type": "module",
   "scripts": {
-    "start": "node server.js",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
-  "dependencies": {
-    "express": "^5.1.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "vite": "^8.3.0"
   }
