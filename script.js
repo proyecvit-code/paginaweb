@@ -1,8 +1,13 @@
 // ==========================================
 // CONFIGURACIÓN DE DISCORD (LANYARD API)
 // ==========================================
-// Reemplaza esta ID con tu ID de usuario de Discord real
 const DISCORD_ID = "1234356150862872676"; 
+
+// ==========================================
+// VARIABLES DE ESTADO GLOBALES
+// ==========================================
+let currentTrack = 0;
+let isPlaying = false;
 
 // ==========================================
 // ELEMENTOS DEL DOM
@@ -33,21 +38,14 @@ const tracks = [
         artist: "XXXTentacion",
         audio: "assets/music/carro.mp3",
         video: "assets/videos/CARRO.mp4",
-        cover: "assets/music/cover1.jpg"  // Portada canción 1
+        cover: "assets/music/cover1.jpg"
     },
     {
         title: "Mercury",
         artist: "GHOSTEMANE",
         audio: "assets/music/mercury.mp3",
         video: "assets/videos/MERCURY.mp4",
-        cover: "assets/music/cover3.jpg"  // Portada canción 2
-    },
-    {
-        title: "Goth",
-        artist: "Sidewalks and Skeletons",
-        audio: "assets/music/moto.mp3",
-        video: "assets/videos/MOTO.mp4",
-        cover: "assets/music/cover2.jpg"  // Portada canción 3
+        cover: "assets/music/cover3.jpg"
     }
 ];
 
@@ -88,12 +86,14 @@ function loadTrack(index) {
 
 async function playTrack() {
     try {
-        await video.play();
-        await audio.play();
+        // Reproducir en paralelo, no secuencial
+        await Promise.all([video.play(), audio.play()]);
         isPlaying = true;
         playButton.innerHTML = '<i class="fa-solid fa-pause"></i>';
     } catch (error) {
         console.log("Error al reproducir:", error);
+        isPlaying = false;
+        playButton.innerHTML = '<i class="fa-solid fa-play"></i>';
     }
 }
 
@@ -109,15 +109,28 @@ playButton.addEventListener("click", () => {
     else playTrack();
 });
 
-function nextTrack() {
+// Espera a que el audio esté listo antes de reproducir
+function waitForCanPlay(mediaElement) {
+    return new Promise((resolve) => {
+        if (mediaElement.readyState >= 3) {
+            resolve();
+        } else {
+            mediaElement.addEventListener("canplay", resolve, { once: true });
+        }
+    });
+}
+
+async function nextTrack() {
     currentTrack = (currentTrack + 1) % tracks.length;
     loadTrack(currentTrack);
+    await waitForCanPlay(audio);
     playTrack();
 }
 
-function previousTrack() {
+async function previousTrack() {
     currentTrack = (currentTrack - 1 + tracks.length) % tracks.length;
     loadTrack(currentTrack);
+    await waitForCanPlay(audio);
     playTrack();
 }
 
@@ -132,7 +145,6 @@ audio.addEventListener("ended", () => {
 // ==========================================
 // SOLUCIÓN PARA SEGUNDO PLANO (PESTAÑA INACTIVA)
 // ==========================================
-// Cuando regresas a la pestaña, reanuda el audio si el navegador lo congeló en segundo plano
 document.addEventListener("visibilitychange", () => {
     if (!document.hidden && isPlaying) {
         if (audio.paused) {
@@ -141,6 +153,8 @@ document.addEventListener("visibilitychange", () => {
         if (video.paused) {
             video.play().catch(e => console.log("Reanudando video al enfocar ventana:", e));
         }
+        // Resincroniza el video con el audio al volver a la pestaña
+        video.currentTime = audio.currentTime;
     }
 });
 
@@ -153,6 +167,11 @@ audio.addEventListener("timeupdate", () => {
     const progress = (audio.currentTime / audio.duration) * 100;
     progressBar.value = progress;
     currentTime.textContent = formatTime(audio.currentTime);
+
+    // Corrige la deriva entre audio y video si se desincronizan más de 0.3s
+    if (Math.abs(video.currentTime - audio.currentTime) > 0.3) {
+        video.currentTime = audio.currentTime;
+    }
 });
 
 audio.addEventListener("loadedmetadata", () => {
@@ -161,15 +180,22 @@ audio.addEventListener("loadedmetadata", () => {
 
 progressBar.addEventListener("input", () => {
     if (!audio.duration) return;
-    audio.currentTime = (progressBar.value / 100) * audio.duration;
+    const newTime = (progressBar.value / 100) * audio.duration;
+    audio.currentTime = newTime;
+    video.currentTime = newTime; // mantiene el video sincronizado al buscar
 });
 
 function formatTime(seconds) {
     if (!seconds || isNaN(seconds)) return "0:00";
-    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60).toString().padStart(2, "0");
+    if (hours > 0) {
+        return `${hours}:${minutes.toString().padStart(2, "0")}:${secs}`;
+    }
     return `${minutes}:${secs}`;
 }
+
 // ==========================================
 // VOLUMEN
 // ==========================================
@@ -211,20 +237,16 @@ enterButton.addEventListener("click", async () => {
 // ==========================================
 async function fetchViews() {
     try {
-        // Verificar si este usuario ya visitó la página antes
         const hasVisited = localStorage.getItem("page_visited");
 
         if (!hasVisited) {
-            // Primera vez que entra: Hacemos un POST para sumar +1
             const response = await fetch("/api/views", { method: "POST" });
             if (response.ok) {
                 const data = await response.json();
                 viewsSpan.textContent = data.views;
-                // Guardamos en el navegador que ya contó su visita
                 localStorage.setItem("page_visited", "true");
             }
         } else {
-            // Ya visitó antes: Hacemos un GET para solo ver el número sin sumar
             const response = await fetch("/api/views");
             if (response.ok) {
                 const data = await response.json();
@@ -249,7 +271,6 @@ async function fetchDiscordStatus() {
         if (responseData.success && responseData.data) {
             const data = responseData.data;
 
-            // Nombre y Avatar
             document.getElementById("discordUsername").textContent = data.discord_user.username;
             
             if (data.discord_user.avatar) {
@@ -257,17 +278,14 @@ async function fetchDiscordStatus() {
                 document.getElementById("discordAvatar").src = avatarUrl;
             }
 
-            // Estado (online, idle, dnd, offline)
             const statusDot = document.getElementById("discordStatusDot");
             statusDot.className = `discord-status ${data.discord_status}`;
 
-            // Actividad / Juego / Tiempo
             const activitySpan = document.getElementById("discordActivity");
             
             if (data.activities && data.activities.length > 0) {
-                // Busca si estás jugando o escuchando algo
-                const customStatus = data.activities.find(act => act.type === 4); // Custom Status
-                const activity = data.activities.find(act => act.type !== 4); // Juego o Spotify
+                const customStatus = data.activities.find(act => act.type === 4);
+                const activity = data.activities.find(act => act.type !== 4);
 
                 if (activity) {
                     if (activity.type === 0) activitySpan.textContent = `playing ${activity.name}`;
@@ -287,32 +305,43 @@ async function fetchDiscordStatus() {
     }
 }
 
-// Ejecutar al cargar
 fetchDiscordStatus();
-setInterval(fetchDiscordStatus, 15000); // Actualiza cada 15 segundos
+setInterval(fetchDiscordStatus, 15000);
 
 // ==========================================
-// ANIMACIÓN TÍTULO PESTAÑA
+// ANIMACIÓN TÍTULO PESTAÑA (HASTA EL @)
 // ==========================================
-const titles = ["@AhM", "@AhMyHA", "@AhMyHack"];
-let titleIndex = 0, charIndex = 0, isDeleting = false;
+(function animateTitle() {
+    const base = "@";
+    const name = "AhMyHack";
+    let isDeleting = true;
+    let index = name.length;
 
-function animateTitle() {
-    const currentText = titles[titleIndex];
-    charIndex = isDeleting ? charIndex - 1 : charIndex + 1;
-    document.title = currentText.substring(0, charIndex);
+    function type() {
+        // Mantiene siempre el @ visible para no mostrar la URL en la pestaña
+        document.title = base + name.substring(0, index);
 
-    let typeSpeed = isDeleting ? 100 : 150;
-    if (!isDeleting && charIndex === currentText.length) {
-        typeSpeed = 1500;
-        isDeleting = true;
-    } else if (isDeleting && charIndex === 0) {
-        isDeleting = false;
-        titleIndex = (titleIndex + 1) % titles.length;
-        typeSpeed = 500;
+        if (isDeleting && index === 0) {
+            isDeleting = false;
+            setTimeout(type, 800);
+            return;
+        }
+
+        if (!isDeleting && index === name.length) {
+            isDeleting = true;
+            setTimeout(type, 2000);
+            return;
+        }
+
+        index += isDeleting ? -1 : 1;
+        const speed = isDeleting ? 120 : 180;
+        setTimeout(type, speed);
     }
-    setTimeout(animateTitle, typeSpeed);
-}
 
-animateTitle();
+    type();
+})();
+
+// ==========================================
+// INICIALIZACIÓN DE LA PRIMERA CANCIÓN
+// ==========================================
 loadTrack(0);
